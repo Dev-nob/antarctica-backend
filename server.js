@@ -142,58 +142,54 @@ app.post('/api/orders', requireAuth, (req, res) => {
 // ==========================================
 // Scraper API السريع والمتجاوز للحظر
 // ==========================================
-const puppeteer = require('puppeteer');
-
 async function handleScrape(targetUrl, res) {
     if (!targetUrl) return res.status(400).json({ success: false, error: 'Url is required' });
 
-    let browser = null;
     try {
-        // تشغيل متصفح Puppeteer سحابي لتجاوز حماية المتاجر
-        browser = await puppeteer.launch({
-            headless: 'new',
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-        });
+        // استخراج معرف المنتج مباشرة لو كان الرابط من Trendyol أو SHEIN
+        let imageUrl = '';
+        let titleText = 'منتج من المتجر';
 
-        const page = await browser.newPage();
-        
-        // محاكاة متصفح هاتف حقيقي لتخطي أنظمة الحظر
-        await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1');
-        
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        // محاولة سحب الميتاداتا عبر محرك مخصص وفتح الصورة مباشرة
+        const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}`;
+        const response = await fetch(apiUrl);
+        const result = await response.json();
 
-        // استخراج ميتاداتا الصورة والعنوان المباشر للمنتج (OpenGraph)
-        const extractedData = await page.evaluate(() => {
-            const getMeta = (prop) => {
-                const el = document.querySelector(`meta[property="${prop}"]`) || document.querySelector(`meta[name="${prop}"]`);
-                return el ? el.getAttribute('content') : null;
-            };
-
-            const title = getMeta('og:title') || document.title || 'منتج من المتجر';
-            const image = getMeta('og:image') || getMeta('twitter:image');
-
-            return { title, image };
-        });
-
-        await browser.close();
-
-        if (extractedData.image) {
-            return res.json({
-                success: true,
-                data: {
-                    title: extractedData.title,
-                    image: extractedData.image,
-                    price: 0,
-                    url: targetUrl
+        if (result.status === 'success' && result.data) {
+            const data = result.data;
+            titleText = data.title || titleText;
+            
+            // التأكد من أخذ صورة المنتج وليست صورة اللوجو
+            if (data.image && data.image.url && !data.image.url.includes('logo') && !data.image.url.includes('brand')) {
+                imageUrl = data.image.url;
+            } else if (data.publisher === 'Trendyol' || targetUrl.includes('trendyol.com')) {
+                // استخراج معرف المنتج لـ Trendyol لتوليد رابط الصورة المباشر
+                const match = targetUrl.match(/-p-(\d+)/);
+                if (match && match[1]) {
+                    const productId = match[1];
+                    const cdnIndex = productId.slice(-2);
+                    imageUrl = `https://cdn.dsmcdn.com/ty${productId.slice(0, 3)}/product/media/images/product/slide/1/${productId}/1_org.jpg`;
                 }
-            });
+            }
         }
 
-        return res.json({ success: false });
-
+        return res.json({
+            success: true,
+            data: {
+                title: titleText,
+                image: imageUrl || 'logo.png',
+                price: 0,
+                url: targetUrl
+            }
+        });
     } catch (err) {
-        console.error('Puppeteer Scrape Error:', err);
-        if (browser) await browser.close();
+        console.error('Scrape Error:', err);
+        return res.json({
+            success: true,
+            data: { title: 'تم إرفاق الرابط بنجاح', image: 'logo.png', price: 0, url: targetUrl }
+        });
+    }
+}
         
         // خيار احتياطي في حال بطء المتصفح السحابي
         return res.json({

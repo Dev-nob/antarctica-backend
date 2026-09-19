@@ -146,42 +146,25 @@ async function handleScrape(targetUrl, res) {
     if (!targetUrl) return res.status(400).json({ success: false, error: 'Url is required' });
 
     try {
-        // استخراج معرف المنتج مباشرة لو كان الرابط من Trendyol أو SHEIN
-        let imageUrl = '';
-        let titleText = 'منتج من المتجر';
-
-        // محاولة سحب الميتاداتا عبر محرك مخصص وفتح الصورة مباشرة
-        const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}`;
+        // استخدام خدمة OpenGraph API مجانية ومباشرة
+        const apiUrl = `https://api.dub.co/metatags?url=${encodeURIComponent(targetUrl)}`;
         const response = await fetch(apiUrl);
-        const result = await response.json();
+        const data = await response.json();
 
-        if (result.status === 'success' && result.data) {
-            const data = result.data;
-            titleText = data.title || titleText;
-            
-            // التأكد من أخذ صورة المنتج وليست صورة اللوجو
-            if (data.image && data.image.url && !data.image.url.includes('logo') && !data.image.url.includes('brand')) {
-                imageUrl = data.image.url;
-            } else if (data.publisher === 'Trendyol' || targetUrl.includes('trendyol.com')) {
-                // استخراج معرف المنتج لـ Trendyol لتوليد رابط الصورة المباشر
-                const match = targetUrl.match(/-p-(\d+)/);
-                if (match && match[1]) {
-                    const productId = match[1];
-                    const cdnIndex = productId.slice(-2);
-                    imageUrl = `https://cdn.dsmcdn.com/ty${productId.slice(0, 3)}/product/media/images/product/slide/1/${productId}/1_org.jpg`;
+        if (data && (data.image || data.title)) {
+            return res.json({
+                success: true,
+                data: {
+                    title: data.title || 'منتج من المتجر',
+                    image: data.image || 'logo.png',
+                    price: 0,
+                    url: targetUrl
                 }
-            }
+            });
         }
 
-        return res.json({
-            success: true,
-            data: {
-                title: titleText,
-                image: imageUrl || 'logo.png',
-                price: 0,
-                url: targetUrl
-            }
-        });
+        return res.json({ success: false });
+            
     } catch (err) {
         console.error('Scrape Error:', err);
         return res.json({

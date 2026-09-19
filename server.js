@@ -146,15 +146,23 @@ async function handleScrape(targetUrl, res) {
     if (!targetUrl) return res.status(400).json({ success: false, error: 'Url is required' });
 
     try {
-        const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}`;
+        // طلب البيانات باستخدام Microlink مخصص للميتاداتا والأصل
+        const apiUrl = `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}&palette=false`;
         const response = await fetch(apiUrl);
         const result = await response.json();
 
         if (result.status === 'success' && result.data) {
             const data = result.data;
             const title = data.title || 'منتج من المتجر';
-            const image = data.image ? data.image.url : '';
             
+            // محاولة جلب صورة المنتج المباشرة، أو اللوجو كخيار ثاني
+            let image = '';
+            if (data.image && data.image.url) {
+                image = data.image.url;
+            } else if (data.logo && data.logo.url) {
+                image = data.logo.url;
+            }
+
             return res.json({
                 success: true,
                 data: {
